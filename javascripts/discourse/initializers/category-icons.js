@@ -329,13 +329,18 @@ export default {
   },
   
   handleSearchResultCategories(api) {
-    // Process search results to add parent categories after page load
-    api.onPageChange(() => {
-      // Use a mutation observer to watch for search results
+    // Initialize the Category model once to ensure it's available
+    const site = api.container.lookup("service:site");
+    
+    // Setup a mutation observer to watch for search results on any page
+    const setupSearchObserver = () => {
+      // Observer configuration - look for changes in the DOM
       const observer = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
           if (mutation.addedNodes && mutation.addedNodes.length) {
-            const searchResults = document.querySelectorAll(".search-results .badge-category.--has-parent");
+            // Look for badges with parent categories in search results
+            const searchResults = document.querySelectorAll(".search-menu-results .badge-category.--has-parent, .search-results .badge-category.--has-parent");
+            
             if (searchResults.length) {
               searchResults.forEach((badge) => {
                 // Skip if already processed
@@ -345,13 +350,14 @@ export default {
                 const parentCategoryId = badge.getAttribute("data-parent-category-id");
                 
                 if (parentCategoryId) {
-                  const category = Category.findById(categoryId);
-                  const parentCategory = Category.findById(parentCategoryId);
+                  // Get the category and parent category from the site categories
+                  const category = site.categories.find(c => c.id === parseInt(categoryId));
+                  const parentCategory = site.categories.find(c => c.id === parseInt(parentCategoryId));
                   
                   if (category && parentCategory) {
                     // Create parent badge
                     const parentBadge = document.createElement("a");
-                    parentBadge.href = `/c/${Category.slugFor(parentCategory)}/${parentCategory.id}`;
+                    parentBadge.href = `/c/${parentCategory.slug}/${parentCategory.id}`;
                     parentBadge.className = "badge-category__wrapper parent-category-badge";
                     
                     const parentSpan = document.createElement("span");
@@ -388,11 +394,35 @@ export default {
         });
       });
       
-      // Start observing
+      // Start observing the entire document for changes
       observer.observe(document.body, {
         childList: true,
         subtree: true
       });
+      
+      return observer;
+    };
+    
+    // Set up the observer when the document is ready
+    if (document.readyState === "complete" || document.readyState === "interactive") {
+      setupSearchObserver();
+    } else {
+      document.addEventListener("DOMContentLoaded", setupSearchObserver);
+    }
+    
+    // Also set up when page changes (for SPAs)
+    api.onPageChange(() => {
+      // Look for any existing search results that might be there
+      const searchResults = document.querySelectorAll(".search-menu-results .badge-category.--has-parent, .search-results .badge-category.--has-parent");
+      if (searchResults.length) {
+        // Process any existing search results
+        searchResults.forEach((badge) => {
+          if (!badge.parentNode.querySelector(".parent-category-badge")) {
+            const event = new Event('processBadge');
+            badge.dispatchEvent(event);
+          }
+        });
+      }
     });
   },
   
