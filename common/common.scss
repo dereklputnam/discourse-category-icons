@@ -1,3 +1,4 @@
+// File: common/common.scss
 .badge-category.--has-icon {
   // hide default bullet when icon is set
   &::before {
@@ -31,4 +32,28 @@
 
 .subcategory .category-icon-widget {
   display: none;
+}
+
+// Parent category breadcrumb styling
+.parent-category-badge {
+  margin-right: 5px;
+  
+  &::after {
+    content: "›";
+    margin: 0 3px;
+    color: var(--primary-medium);
+  }
+}
+
+.child-category {
+  // Some adjustments for the child category when displayed with parent
+}
+
+// Category title appendage styling from the previous component
+.category-title-appendage {
+  font-size: 0.8em;
+  font-weight: normal;
+  line-height: 1.4;
+  margin-top: 5px;
+  color: var(--primary-medium);
 }
