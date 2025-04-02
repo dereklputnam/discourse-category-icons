@@ -54,6 +54,9 @@ export default {
       categoriesBoxesWithTopics.reopen({
         lockIcon,
       });
+      
+      // Handle parent categories in search results
+      this.handleSearchResultCategories(api);
 
       function getIconItem(categorySlug) {
         if (!categorySlug) {
@@ -324,4 +327,94 @@ export default {
       }
     });
   },
+  
+  handleSearchResultCategories(api) {
+    // Process search results to add parent categories after page load
+    api.onPageChange(() => {
+      // Use a mutation observer to watch for search results
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.addedNodes && mutation.addedNodes.length) {
+            const searchResults = document.querySelectorAll(".search-results .badge-category.--has-parent");
+            if (searchResults.length) {
+              searchResults.forEach((badge) => {
+                // Skip if already processed
+                if (badge.parentNode.querySelector(".parent-category-badge")) return;
+                
+                const categoryId = badge.getAttribute("data-category-id");
+                const parentCategoryId = badge.getAttribute("data-parent-category-id");
+                
+                if (parentCategoryId) {
+                  const category = Category.findById(categoryId);
+                  const parentCategory = Category.findById(parentCategoryId);
+                  
+                  if (category && parentCategory) {
+                    // Create parent badge
+                    const parentBadge = document.createElement("a");
+                    parentBadge.href = `/c/${Category.slugFor(parentCategory)}/${parentCategory.id}`;
+                    parentBadge.className = "badge-category__wrapper parent-category-badge";
+                    
+                    const parentSpan = document.createElement("span");
+                    parentSpan.className = "badge-category";
+                    parentSpan.setAttribute("data-category-id", parentCategoryId);
+                    parentSpan.setAttribute("data-drop-close", "true");
+                    
+                    const iconItem = this.getIconItem(settings.category_icon_list.split("|"), parentCategory.slug);
+                    
+                    if (iconItem) {
+                      const iconSpan = document.createElement("span");
+                      iconSpan.className = "badge-category__icon";
+                      if (iconItem[2]) {
+                        iconSpan.style.color = iconItem[2];
+                      }
+                      iconSpan.innerHTML = iconHTML(iconItem[1]);
+                      parentSpan.appendChild(iconSpan);
+                    }
+                    
+                    const nameSpan = document.createElement("span");
+                    nameSpan.className = "badge-category__name";
+                    nameSpan.textContent = parentCategory.name;
+                    
+                    parentSpan.appendChild(nameSpan);
+                    parentBadge.appendChild(parentSpan);
+                    
+                    // Insert before the child category badge
+                    badge.parentNode.insertBefore(parentBadge, badge.parentNode.firstChild);
+                  }
+                }
+              });
+            }
+          }
+        });
+      });
+      
+      // Start observing
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+    });
+  },
+  
+  getIconItem(categoryThemeList, categorySlug) {
+    if (!categorySlug) {
+      return;
+    }
+
+    let categoryThemeItem = categoryThemeList.find((str) =>
+      str.indexOf(",") > -1
+        ? categorySlug.indexOf(str.substr(0, str.indexOf(","))) > -1
+        : ""
+    );
+
+    if (categoryThemeItem) {
+      let iconItem = categoryThemeItem.split(",");
+      // Test partial/exact match
+      if (iconItem[3] === "partial") {
+        return iconItem;
+      } else if (iconItem[0] === categorySlug) {
+        return iconItem;
+      }
+    }
+  }
 };
