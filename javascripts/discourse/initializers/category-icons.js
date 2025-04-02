@@ -1,5 +1,5 @@
+// File: javascripts/discourse/initializers/category-icons-with-parent.js
 import { get } from "@ember/object";
-import { h } from "virtual-dom";
 import categoriesBoxes from "discourse/components/categories-boxes";
 import categoriesBoxesWithTopics from "discourse/components/categories-boxes-with-topics";
 import categoryTitleLink from "discourse/components/category-title-link";
@@ -10,6 +10,7 @@ import { iconHTML, iconNode } from "discourse/lib/icon-library";
 import { withPluginApi } from "discourse/lib/plugin-api";
 import { isRTL } from "discourse/lib/text-direction";
 import { escapeExpression } from "discourse/lib/utilities";
+import categoryVariables from "discourse/helpers/category-variables";
 import Category from "discourse/models/category";
 import { i18n } from "discourse-i18n";
 
@@ -34,10 +35,10 @@ class CategoryHashtagTypeWithIcon extends CategoryHashtagType {
 }
 
 export default {
-  name: "category-icons",
+  name: "category-icons-with-parent",
 
   initialize(owner) {
-    withPluginApi("0.8.26", (api) => {
+    withPluginApi("0.8.31", (api) => {
       let categoryThemeList = settings.category_icon_list.split("|");
       let lockIcon = settings.category_lock_icon || "lock";
 
@@ -82,27 +83,88 @@ export default {
         )}">&times; ${count}</span>`;
       }
 
-      function categoryIconsRenderer(category, opts) {
+      function renderParentCategory(parentCat, opts) {
         let siteSettings = helperContext().siteSettings;
-        let descriptionText = escapeExpression(
-          get(category, "description_text")
-        );
+        let descriptionText = escapeExpression(get(parentCat, "description_text"));
+        let restricted = get(parentCat, "read_restricted");
+        let url = opts.url
+          ? opts.url
+          : getURL(`/c/${Category.slugFor(parentCat)}/${get(parentCat, "id")}`);
+        let href = opts.link === false ? "" : url;
+        let tagName = opts.link === false || opts.link === "false" ? "span" : "a";
+        let extraClasses = opts.extraClasses ? " " + opts.extraClasses : "";
+        let style = `${categoryVariables(parentCat)}`;
+        let html = "";
+        let categoryDir = "";
+        let dataAttributes = `data-category-id="${get(parentCat, "id")}"`;
+
+        // Add custom category icon for parent
+        let parentIconItem = getIconItem(parentCat.slug);
+
+        let classNames = `badge-category ${parentIconItem ? "--has-icon" : ""}`;
+        if (restricted) {
+          classNames += " restricted";
+        }
+
+        html += `<span
+          ${dataAttributes}      
+          data-drop-close="true"
+          class="${classNames}"
+          ${
+            opts.previewColor
+              ? `style="--category-badge-color: #${parentCat.color}"`
+              : ""
+          }
+          ${descriptionText ? 'title="' + descriptionText + '" ' : ""}
+        >`;
+
+        if (parentIconItem) {
+          let itemColor = parentIconItem[2] ? `style="color: ${parentIconItem[2]}"` : "";
+          let itemIcon = parentIconItem[1] !== "" ? iconHTML(parentIconItem[1]) : "";
+          html += `<span ${itemColor} class="badge-category__icon">${itemIcon}</span>`;
+        }
+
+        let categoryName = escapeExpression(get(parentCat, "name"));
+
+        if (siteSettings.support_mixed_text_direction) {
+          categoryDir = isRTL(categoryName) ? 'dir="rtl"' : 'dir="ltr"';
+        }
+
+        if (restricted) {
+          html += iconHTML(lockIcon);
+        }
+        html += `<span class="badge-category__name" ${categoryDir}>${categoryName}</span>`;
+        html += "</span>";
+
+        if (href) {
+          href = ` href="${href}" `;
+        }
+
+        return `<${tagName} class="badge-category__wrapper parent-category-badge ${extraClasses}" ${
+          style.length > 0 ? `style="${style}"` : ""
+        } ${href}>${html}</${tagName}>`;
+      }
+
+      function categoryIconsRenderer(category, opts) {
+        // Skip if on the main category page
+        const router = api.container.lookup("service:router");
+        const skipParentDisplay = router.currentRouteName === "discovery.categories";
+
+        let siteSettings = helperContext().siteSettings;
+        let descriptionText = escapeExpression(get(category, "description_text"));
         let restricted = get(category, "read_restricted");
         let url = opts.url
           ? opts.url
           : getURL(`/c/${Category.slugFor(category)}/${get(category, "id")}`);
         let href = opts.link === false ? "" : url;
-        let tagName =
-          opts.link === false || opts.link === "false" ? "span" : "a";
+        let tagName = opts.link === false || opts.link === "false" ? "span" : "a";
         let extraClasses = opts.extraClasses ? " " + opts.extraClasses : "";
         let html = "";
         let parentCat = null;
         let categoryDir = "";
-        let dataAttributes = category
-          ? `data-category-id="${get(category, "id")}"`
-          : "";
+        let dataAttributes = category ? `data-category-id="${get(category, "id")}"` : "";
 
-        /// Add custom category icon from theme settings
+        // Add custom category icon from theme settings
         let iconItem = getIconItem(category.slug);
 
         if (!opts.hideParent) {
@@ -114,9 +176,10 @@ export default {
           classNames += " restricted";
         }
 
-        if (parentCat) {
-          classNames += ` --has-parent`;
-          dataAttributes += ` data-parent-category-id="${parentCat.id}"`;
+        if (parentCat && !skipParentDisplay) {
+          classNames += ` child-category`;
+        } else {
+          classNames += ` ${parentCat ? "--has-parent" : ""}`;
         }
 
         html += `<span 
@@ -131,7 +194,6 @@ export default {
           let itemIcon = iconItem[1] !== "" ? iconHTML(iconItem[1]) : "";
           html += `<span ${itemColor} class="badge-category__icon">${itemIcon}</span>`;
         }
-        /// End custom category icon
 
         let categoryName = escapeExpression(get(category, "name"));
 
@@ -162,7 +224,15 @@ export default {
             })}
             </span>`;
         }
-        return `<${tagName} class="badge-category__wrapper ${extraClasses}" ${href}>${html}</${tagName}>${afterBadgeWrapper}`;
+
+        const categoryWrapper = `<${tagName} class="badge-category__wrapper ${extraClasses}" ${href}>${html}</${tagName}>${afterBadgeWrapper}`;
+        
+        // Display parent category breadcrumb except on main categories page
+        if (parentCat && !skipParentDisplay && !opts.hideParent) {
+          return renderParentCategory(parentCat, opts) + categoryWrapper.replace("--has-parent", "");
+        } else {
+          return categoryWrapper;
+        }
       }
 
       api.replaceCategoryLinkRenderer(categoryIconsRenderer);
