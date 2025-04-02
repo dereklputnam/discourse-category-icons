@@ -38,11 +38,11 @@
 .parent-category-badge {
   //margin-right: 5px;
   
-  /*&::after {
+  &::after {
     content: "›";
-    margin: 0 3px;
+    //margin: 0 3px;
     color: var(--primary-medium);
-  }*/
+  }
 }
 
 .child-category {
