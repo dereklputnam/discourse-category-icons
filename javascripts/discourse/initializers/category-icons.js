@@ -331,6 +331,8 @@ export default {
   handleSearchResultCategories(api) {
     // Get access to the site data for category lookups
     const site = api.container.lookup("service:site");
+    const router = api.container.lookup("service:router");
+    let isHomepage = false;
     
     // Helper function to add parent category to a badge
     const addParentBadge = (badge, parentCategoryId) => {
@@ -365,7 +367,7 @@ export default {
       
       const nameSpan = document.createElement("span");
       nameSpan.className = "badge-category__name";
-      nameSpan.dir = "ltr"; // Match the direction from your HTML
+      nameSpan.dir = "ltr";
       nameSpan.textContent = parentCategory.name;
       
       parentSpan.appendChild(nameSpan);
@@ -375,11 +377,57 @@ export default {
       badge.parentNode.insertBefore(parentBadge, badge.parentNode.firstChild);
     };
     
-    // Process search results with a delay to allow for DOM updates
-    const processResults = () => {
-      // Specifically target any elements with --has-parent class
-      document.querySelectorAll(".badge-category.--has-parent").forEach(badge => {
+    // Process a specific search menu
+    const processSearchMenu = (searchMenu) => {
+      if (!searchMenu) return;
+      
+      // Find all parent category badges within this specific search menu
+      const badges = searchMenu.querySelectorAll(".badge-category.--has-parent");
+      
+      badges.forEach(badge => {
         // Get parent ID directly from data attribute
+        const parentCategoryId = badge.getAttribute("data-parent-category-id");
+        if (parentCategoryId) {
+          addParentBadge(badge, parentCategoryId);
+        }
+      });
+      
+      // Debug output for homepage
+      if (isHomepage) {
+        console.log("Processed search menu", searchMenu);
+        console.log("Found badges:", badges.length);
+      }
+    };
+    
+    // Special handling for homepage search
+    const specialHomepageHandler = () => {
+      // Only run this on the homepage
+      if (!isHomepage) return;
+      
+      // Target all possible search containers
+      const searchContainers = [
+        document.querySelector(".search-menu"),
+        document.querySelector(".menu-panel"),
+        document.querySelector(".results"),
+        document.querySelector(".search-results"),
+        document.querySelector(".search-menu-results"),
+        document.querySelector(".panel-body")
+      ].filter(el => el); // Remove null elements
+      
+      // Process each container
+      searchContainers.forEach(container => {
+        // Force reprocessing of search results
+        processSearchMenu(container);
+        
+        // Also look for nested containers
+        const nestedContainers = container.querySelectorAll(".results, .search-results, .panel-body-contents");
+        nestedContainers.forEach(nested => processSearchMenu(nested));
+      });
+    };
+    
+    // Process all badges on the page
+    const processAllBadges = () => {
+      document.querySelectorAll(".badge-category.--has-parent").forEach(badge => {
         const parentCategoryId = badge.getAttribute("data-parent-category-id");
         if (parentCategoryId) {
           addParentBadge(badge, parentCategoryId);
@@ -387,52 +435,88 @@ export default {
       });
     };
     
-    // Set up a mutation observer that runs less frequently but is more thorough
-    const searchObserver = new MutationObserver(() => {
-      // Use a throttled approach to avoid excessive processing
-      if (!searchObserver.timeout) {
-        searchObserver.timeout = setTimeout(() => {
-          processResults();
-          searchObserver.timeout = null;
-        }, 100);
+    // Check if we're on the homepage
+    const checkIfHomepage = () => {
+      isHomepage = router.currentRouteName === "discovery.index" || 
+                  document.body.classList.contains("navigation-topics") ||
+                  window.location.pathname === "/" ||
+                  window.location.pathname === "";
+      
+      // Extra aggressive handling for homepage
+      if (isHomepage) {
+        // Run our special handler on a timer
+        setTimeout(specialHomepageHandler, 300);
+        setTimeout(specialHomepageHandler, 600);
+        setTimeout(specialHomepageHandler, 1000);
+        
+        // Also set up an interval for the homepage
+        if (!window.homepageInterval) {
+          window.homepageInterval = setInterval(() => {
+            if (document.querySelector(".search-menu") && 
+                document.querySelector(".search-menu").querySelector(".badge-category.--has-parent")) {
+              specialHomepageHandler();
+            }
+          }, 500);
+          
+          // Clear after 5 seconds to avoid performance issues
+          setTimeout(() => {
+            clearInterval(window.homepageInterval);
+            window.homepageInterval = null;
+          }, 5000);
+        }
       }
+    };
+    
+    // Set up a mutation observer for all changes
+    const observer = new MutationObserver(() => {
+      // Check if we're on homepage
+      checkIfHomepage();
+      
+      // Process all badges
+      processAllBadges();
+      
+      // Extra processing for search menus
+      document.querySelectorAll(".search-menu, .results, .search-results").forEach(menu => {
+        processSearchMenu(menu);
+      });
     });
     
-    searchObserver.observe(document.body, {
+    // Start observing the entire document
+    observer.observe(document.body, {
       childList: true,
       subtree: true,
       attributes: true,
       attributeFilter: ["class", "data-parent-category-id"]
     });
     
-    // Process immediately on page change
+    // Process on page change
     api.onPageChange(() => {
-      // Use a short delay to ensure the DOM is updated
-      setTimeout(processResults, 50);
+      checkIfHomepage();
+      setTimeout(processAllBadges, 100);
+      setTimeout(specialHomepageHandler, 300);
     });
     
-    // Process now if the document is already loaded
-    if (document.readyState === "complete" || document.readyState === "interactive") {
-      setTimeout(processResults, 100);
-    } else {
-      document.addEventListener("DOMContentLoaded", () => {
-        setTimeout(processResults, 100);
-      });
-    }
-    
-    // Also hook into search-specific events
+    // Process on search click with multiple attempts
     document.addEventListener("click", event => {
-      // Target various search triggers
       if (event.target.closest(".search-dropdown") || 
           event.target.closest(".search-button") || 
           event.target.closest(".search-icon") ||
-          event.target.closest(".search-header") ||
-          event.target.closest("button[data-element='search-menu-trigger']")) {
+          event.target.closest(".header-dropdown-toggle.search-dropdown") ||
+          event.target.closest("[data-element='search-menu-trigger']")) {
         
-        // Process after a delay to allow search results to load
-        setTimeout(processResults, 300);
+        // Multiple attempts with increasing delays
+        setTimeout(processAllBadges, 200);
+        setTimeout(processAllBadges, 400);
+        setTimeout(processAllBadges, 800);
+        
+        // Check if we're on homepage and do extra processing
+        checkIfHomepage();
       }
     });
+    
+    // Initial processing
+    checkIfHomepage();
+    processAllBadges();
   },
   
   getIconItem(categoryThemeList, categorySlug) {
