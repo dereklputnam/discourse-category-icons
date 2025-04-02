@@ -12,6 +12,7 @@ import { isRTL } from "discourse/lib/text-direction";
 import { escapeExpression } from "discourse/lib/utilities";
 import categoryVariables from "discourse/helpers/category-variables";
 import Category from "discourse/models/category";
+import { h } from "virtual-dom";
 import { i18n } from "discourse-i18n";
 
 class CategoryHashtagTypeWithIcon extends CategoryHashtagType {
