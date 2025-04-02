@@ -45,10 +45,10 @@
   }
 }
 
-/*.badge-category__wrapper {
-  margin-right: 0.5em !important;
-}*/
-
+.badge-category.child-category {
+  margin-left: 5px;
+}
+  
 .link-bottom-line {
   gap: 0 !important;
 }
