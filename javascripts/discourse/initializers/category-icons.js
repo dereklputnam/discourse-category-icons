@@ -329,99 +329,132 @@ export default {
   },
   
   handleSearchResultCategories(api) {
-    // Initialize the Category model once to ensure it's available
+    // Get access to the site data for category lookups
     const site = api.container.lookup("service:site");
     
-    // Setup a mutation observer to watch for search results on any page
-    const setupSearchObserver = () => {
-      // Observer configuration - look for changes in the DOM
-      const observer = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-          if (mutation.addedNodes && mutation.addedNodes.length) {
-            // Look for badges with parent categories in search results
-            const searchResults = document.querySelectorAll(".search-menu-results .badge-category.--has-parent, .search-results .badge-category.--has-parent");
-            
-            if (searchResults.length) {
-              searchResults.forEach((badge) => {
-                // Skip if already processed
-                if (badge.parentNode.querySelector(".parent-category-badge")) return;
-                
-                const categoryId = badge.getAttribute("data-category-id");
-                const parentCategoryId = badge.getAttribute("data-parent-category-id");
-                
-                if (parentCategoryId) {
-                  // Get the category and parent category from the site categories
-                  const category = site.categories.find(c => c.id === parseInt(categoryId));
-                  const parentCategory = site.categories.find(c => c.id === parseInt(parentCategoryId));
-                  
-                  if (category && parentCategory) {
-                    // Create parent badge
-                    const parentBadge = document.createElement("a");
-                    parentBadge.href = `/c/${parentCategory.slug}/${parentCategory.id}`;
-                    parentBadge.className = "badge-category__wrapper parent-category-badge";
-                    
-                    const parentSpan = document.createElement("span");
-                    parentSpan.className = "badge-category";
-                    parentSpan.setAttribute("data-category-id", parentCategoryId);
-                    parentSpan.setAttribute("data-drop-close", "true");
-                    
-                    const iconItem = this.getIconItem(settings.category_icon_list.split("|"), parentCategory.slug);
-                    
-                    if (iconItem) {
-                      const iconSpan = document.createElement("span");
-                      iconSpan.className = "badge-category__icon";
-                      if (iconItem[2]) {
-                        iconSpan.style.color = iconItem[2];
-                      }
-                      iconSpan.innerHTML = iconHTML(iconItem[1]);
-                      parentSpan.appendChild(iconSpan);
-                    }
-                    
-                    const nameSpan = document.createElement("span");
-                    nameSpan.className = "badge-category__name";
-                    nameSpan.textContent = parentCategory.name;
-                    
-                    parentSpan.appendChild(nameSpan);
-                    parentBadge.appendChild(parentSpan);
-                    
-                    // Insert before the child category badge
-                    badge.parentNode.insertBefore(parentBadge, badge.parentNode.firstChild);
-                  }
-                }
-              });
+    // Function to process a badge with parent category
+    const processBadge = (badge) => {
+      // Skip if already processed
+      if (badge.parentNode.querySelector(".parent-category-badge")) return;
+      
+      const categoryId = badge.getAttribute("data-category-id");
+      const parentCategoryId = badge.getAttribute("data-parent-category-id");
+      
+      if (parentCategoryId) {
+        // Get the category and parent category from the site categories
+        const category = site.categories.find(c => c.id === parseInt(categoryId));
+        const parentCategory = site.categories.find(c => c.id === parseInt(parentCategoryId));
+        
+        if (category && parentCategory) {
+          // Create parent badge
+          const parentBadge = document.createElement("a");
+          parentBadge.href = `/c/${parentCategory.slug}/${parentCategory.id}`;
+          parentBadge.className = "badge-category__wrapper parent-category-badge";
+          
+          const parentSpan = document.createElement("span");
+          parentSpan.className = "badge-category";
+          parentSpan.setAttribute("data-category-id", parentCategoryId);
+          parentSpan.setAttribute("data-drop-close", "true");
+          
+          const iconItem = this.getIconItem(settings.category_icon_list.split("|"), parentCategory.slug);
+          
+          if (iconItem) {
+            const iconSpan = document.createElement("span");
+            iconSpan.className = "badge-category__icon";
+            if (iconItem[2]) {
+              iconSpan.style.color = iconItem[2];
             }
+            iconSpan.innerHTML = iconHTML(iconItem[1]);
+            parentSpan.appendChild(iconSpan);
           }
-        });
-      });
-      
-      // Start observing the entire document for changes
-      observer.observe(document.body, {
-        childList: true,
-        subtree: true
-      });
-      
-      return observer;
+          
+          const nameSpan = document.createElement("span");
+          nameSpan.className = "badge-category__name";
+          nameSpan.textContent = parentCategory.name;
+          
+          parentSpan.appendChild(nameSpan);
+          parentBadge.appendChild(parentSpan);
+          
+          // Insert before the child category badge
+          badge.parentNode.insertBefore(parentBadge, badge.parentNode.firstChild);
+        }
+      }
     };
     
-    // Set up the observer when the document is ready
-    if (document.readyState === "complete" || document.readyState === "interactive") {
-      setupSearchObserver();
-    } else {
-      document.addEventListener("DOMContentLoaded", setupSearchObserver);
-    }
-    
-    // Also set up when page changes (for SPAs)
-    api.onPageChange(() => {
-      // Look for any existing search results that might be there
-      const searchResults = document.querySelectorAll(".search-menu-results .badge-category.--has-parent, .search-results .badge-category.--has-parent");
+    // Process all existing and new search results
+    const processSearchResults = () => {
+      // Target all possible search result containers
+      const searchResultSelectors = [
+        ".search-menu .results .badge-category.--has-parent", 
+        ".search-menu-results .badge-category.--has-parent", 
+        ".search-results .badge-category.--has-parent",
+        ".menu-panel .search-menu .results .badge-category.--has-parent",
+        ".menu-panel .search-results .badge-category.--has-parent",
+        ".search-container .search-results .badge-category.--has-parent",
+        ".dropdown-search-results .badge-category.--has-parent"
+      ];
+      
+      // Get all search results from all possible containers
+      const searchResults = document.querySelectorAll(searchResultSelectors.join(", "));
+      
       if (searchResults.length) {
-        // Process any existing search results
-        searchResults.forEach((badge) => {
-          if (!badge.parentNode.querySelector(".parent-category-badge")) {
-            const event = new Event('processBadge');
-            badge.dispatchEvent(event);
+        searchResults.forEach(badge => processBadge(badge));
+      }
+    };
+    
+    // Process on initial load and whenever there's a DOM change
+    const observer = new MutationObserver((mutations) => {
+      let shouldProcess = false;
+      
+      mutations.forEach((mutation) => {
+        // Check if new nodes were added
+        if (mutation.addedNodes && mutation.addedNodes.length) {
+          for (let i = 0; i < mutation.addedNodes.length; i++) {
+            const node = mutation.addedNodes[i];
+            
+            // If it's an element node
+            if (node.nodeType === 1) {
+              // Check if it's a search result or contains search results
+              if (node.classList && 
+                 (node.classList.contains("search-menu") || 
+                  node.classList.contains("search-results") ||
+                  node.classList.contains("results") ||
+                  node.classList.contains("badge-category") ||
+                  node.classList.contains("badge-category--has-parent") ||
+                  node.querySelector(".badge-category.--has-parent"))) {
+                shouldProcess = true;
+                break;
+              }
+            }
           }
-        });
+        }
+      });
+      
+      if (shouldProcess) {
+        // Small delay to ensure DOM is updated
+        setTimeout(processSearchResults, 50);
+      }
+    });
+    
+    // Start observing the entire document
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+    
+    // Process any existing results
+    processSearchResults();
+    
+    // Also process on page change and header click (for search dropdown)
+    api.onPageChange(processSearchResults);
+    
+    // Watch for clicks on the search icon in the header
+    document.addEventListener("click", (e) => {
+      if (e.target.closest(".d-header .search-dropdown") || 
+          e.target.closest(".d-header .search-icon") ||
+          e.target.closest(".d-header .search-menu")) {
+        // Small delay to allow dropdown to open
+        setTimeout(processSearchResults, 100);
       }
     });
   },
