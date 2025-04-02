@@ -528,165 +528,197 @@ export default {
   },
   
   setupSearchResultsHandler(api) {
-    // Get site data for all categories
+    // Get site data for categories
     const site = api.container.lookup("service:site");
     
-    // Process all search result elements with parent categories
-    function processSearchResults() {
-      // Find all search result wrappers across any page (including homepage)
-      const searchResultWrappers = document.querySelectorAll('.search-result-topic, .search-result, .search-link');
+    // Process a single badge
+    function processBadge(badge) {
+      // Skip if already processed or no parent
+      if (!badge || !badge.classList || !badge.classList.contains('--has-parent')) return;
       
-      searchResultWrappers.forEach(wrapper => {
-        // Find category badges with parent categories inside this wrapper
-        const badges = wrapper.querySelectorAll('.badge-category.--has-parent');
-        
-        badges.forEach(badge => {
-          // Skip if parent badge already exists
-          let processed = false;
-          let current = badge;
-          while (current.previousElementSibling) {
-            current = current.previousElementSibling;
-            if (current.classList && current.classList.contains('parent-category-badge')) {
-              processed = true;
-              break;
-            }
+      // Check if this badge already has a parent badge added
+      let current = badge;
+      let processed = false;
+      
+      // Look directly upward in parent node to find existing badges
+      const badgeWrapper = badge.closest('.badge-category__wrapper');
+      if (badgeWrapper) {
+        let prev = badgeWrapper.previousElementSibling;
+        if (prev && prev.classList && prev.classList.contains('parent-category-badge')) {
+          processed = true;
+        }
+      }
+      
+      if (processed) return;
+      
+      // Get parent category ID
+      const parentId = badge.getAttribute('data-parent-category-id');
+      if (!parentId) return;
+      
+      // Find parent category
+      const parentCategory = site.categories.find(c => c.id === parseInt(parentId, 10));
+      if (!parentCategory) return;
+      
+      // Create parent badge
+      const parentWrapper = document.createElement('a');
+      parentWrapper.className = 'badge-category__wrapper parent-category-badge';
+      parentWrapper.href = `/c/${parentCategory.slug}/${parentCategory.id}`;
+      
+      const parentBadge = document.createElement('span');
+      parentBadge.className = 'badge-category';
+      parentBadge.setAttribute('data-category-id', parentId);
+      parentBadge.setAttribute('data-drop-close', 'true');
+      
+      // Check for icon
+      const categoryThemeList = settings.category_icon_list.split("|");
+      const iconMatch = categoryThemeList.find(str => {
+        if (!str || !str.includes(',')) return false;
+        const [slug, _, __, match] = str.split(',');
+        if (match === 'partial') {
+          return parentCategory.slug.includes(slug);
+        } else {
+          return parentCategory.slug === slug;
+        }
+      });
+      
+      if (iconMatch) {
+        const [_, icon, color] = iconMatch.split(',');
+        if (icon) {
+          const iconSpan = document.createElement('span');
+          iconSpan.className = 'badge-category__icon';
+          if (color) {
+            iconSpan.style.color = color;
           }
-          
-          if (processed) return;
-          
-          // Get parent category ID
-          const parentId = badge.getAttribute('data-parent-category-id');
-          if (!parentId) return;
-          
-          // Find parent category
-          const parentCategory = site.categories.find(c => c.id === parseInt(parentId, 10));
-          if (!parentCategory) return;
-          
-          // Create parent badge element
-          const parentWrapper = document.createElement('a');
-          parentWrapper.className = 'badge-category__wrapper parent-category-badge';
-          parentWrapper.href = `/c/${parentCategory.slug}/${parentCategory.id}`;
-          
-          const parentBadge = document.createElement('span');
-          parentBadge.className = 'badge-category';
-          parentBadge.setAttribute('data-category-id', parentId);
-          parentBadge.setAttribute('data-drop-close', 'true');
-          
-          // Check for icon
-          const categoryThemeList = settings.category_icon_list.split("|");
-          const iconMatch = categoryThemeList.find(str => {
-            if (!str || !str.includes(',')) return false;
-            const [slug, _, __, match] = str.split(',');
-            if (match === 'partial') {
-              return parentCategory.slug.includes(slug);
-            } else {
-              return parentCategory.slug === slug;
-            }
-          });
-          
-          if (iconMatch) {
-            const [_, icon, color] = iconMatch.split(',');
-            if (icon) {
-              const iconSpan = document.createElement('span');
-              iconSpan.className = 'badge-category__icon';
-              if (color) {
-                iconSpan.style.color = color;
-              }
-              iconSpan.innerHTML = iconHTML(icon);
-              parentBadge.appendChild(iconSpan);
-            }
-          }
-          
-          // Add category name
-          const nameSpan = document.createElement('span');
-          nameSpan.className = 'badge-category__name';
-          nameSpan.textContent = parentCategory.name;
-          nameSpan.dir = 'ltr';
-          
-          parentBadge.appendChild(nameSpan);
-          parentWrapper.appendChild(parentBadge);
-          
-          // Insert before the badge (likely inside its wrapper)
-          const badgeWrapper = badge.closest('.badge-category__wrapper');
-          if (badgeWrapper) {
-            badgeWrapper.parentNode.insertBefore(parentWrapper, badgeWrapper);
-          }
-        });
+          iconSpan.innerHTML = iconHTML(icon);
+          parentBadge.appendChild(iconSpan);
+        }
+      }
+      
+      // Add category name
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'badge-category__name';
+      nameSpan.textContent = parentCategory.name;
+      nameSpan.dir = 'ltr';
+      
+      parentBadge.appendChild(nameSpan);
+      parentWrapper.appendChild(parentBadge);
+      
+      // Try multiple insertion strategies
+      if (badgeWrapper) {
+        // Standard approach - insert before badge wrapper
+        badgeWrapper.parentNode.insertBefore(parentWrapper, badgeWrapper);
+      } else {
+        // Fallback - get closest container and insert before badge
+        const secondLine = badge.closest('.second-line');
+        if (secondLine) {
+          secondLine.insertBefore(parentWrapper, secondLine.firstChild);
+        } else {
+          badge.parentNode.insertBefore(parentWrapper, badge);
+        }
+      }
+    }
+    
+    // Process all badges matching selector
+    function processAllBadges() {
+      document.querySelectorAll('.badge-category.--has-parent').forEach(processBadge);
+    }
+    
+    // Special homepage handler
+    function processHomepageSearch() {
+      // Find all possible parent nodes for search results on homepage
+      const containers = [
+        '.navigation-topics .search-menu',
+        '.ember-application .search-menu',
+        '.discovery-index .search-menu',
+        '[class*="discovery-"] .search-menu',
+        '#main-outlet .search-menu',
+        '.search-menu'
+      ];
+      
+      containers.forEach(selector => {
+        const menu = document.querySelector(selector);
+        if (menu) {
+          // Find all badges within this container
+          const badges = menu.querySelectorAll('.badge-category.--has-parent');
+          badges.forEach(processBadge);
+        }
       });
     }
     
-    // Run when search menu is clicked
-    document.addEventListener('click', function(e) {
-      if (e.target.closest('.search-dropdown') || 
-          e.target.closest('.search-link') || 
-          e.target.matches('.search-icon') ||
-          e.target.closest('.header-dropdown-toggle.search-dropdown')) {
-        
-        // Multiple attempts with increasing delays
-        setTimeout(processSearchResults, 200);
-        setTimeout(processSearchResults, 500);
-        setTimeout(processSearchResults, 1000);
-      }
-    });
-    
-    // Monitor DOM changes for search results
-    const observer = new MutationObserver(function(mutations) {
-      let shouldProcess = false;
-      
-      for (const mutation of mutations) {
-        if (mutation.type === 'childList' && mutation.addedNodes.length) {
-          for (const node of mutation.addedNodes) {
-            if (node.nodeType === 1) {  // Element node
-              // Check if it's a search result or contains search results
-              if ((node.classList && 
-                  (node.classList.contains('search-menu') || 
-                   node.classList.contains('search-result') || 
-                   node.classList.contains('search-result-topic') ||
-                   node.classList.contains('search-link'))) ||
-                  (node.querySelector && node.querySelector('.search-result, .search-result-topic, .badge-category.--has-parent'))) {
-                shouldProcess = true;
-                break;
+    // Create a dedicated observer for badge elements
+    const badgeObserver = new MutationObserver(mutations => {
+      mutations.forEach(mutation => {
+        if (mutation.type === 'childList') {
+          mutation.addedNodes.forEach(node => {
+            // If the node itself is a badge with parent
+            if (node.nodeType === 1 && node.classList && 
+                node.classList.contains('badge-category') && 
+                node.classList.contains('--has-parent')) {
+              processBadge(node);
+            }
+            // If it's an element that might contain badges
+            else if (node.nodeType === 1 && node.querySelectorAll) {
+              const badges = node.querySelectorAll('.badge-category.--has-parent');
+              if (badges.length) {
+                badges.forEach(processBadge);
               }
             }
-          }
+          });
         }
-        
-        if (shouldProcess) break;
-      }
-      
-      if (shouldProcess) {
-        setTimeout(processSearchResults, 50);
-      }
+      });
     });
     
-    // Start observing the document
-    observer.observe(document.body, {
+    // Observe entire document
+    badgeObserver.observe(document.body, {
       childList: true,
       subtree: true
     });
     
-    // Run on page change - no route-specific conditionals
-    api.onPageChange(() => {
-      setTimeout(processSearchResults, 100);
-      setTimeout(processSearchResults, 500);  // Additional attempt
+    // Watch for search menu opening
+    document.addEventListener('click', event => {
+      if (event.target.closest('.search-dropdown') || 
+          event.target.closest('.search-icon') ||
+          event.target.closest('.search-button') ||
+          event.target.matches('[data-element="search-menu-trigger"]')) {
+        
+        // First process after a short delay
+        setTimeout(() => {
+          processAllBadges();
+          processHomepageSearch(); // Special homepage processing
+        }, 200);
+        
+        // Also check again after longer delay
+        setTimeout(() => {
+          processAllBadges();
+          processHomepageSearch();
+        }, 600);
+      }
     });
     
-    // Process on load
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => {
-        setTimeout(processSearchResults, 100);
-      });
-    } else {
-      setTimeout(processSearchResults, 100);
-    }
-    
-    // Extra handling - periodically check for a few seconds
-    let count = 0;
+    // Setup periodic checking during page load
+    let checkCount = 0;
     const interval = setInterval(() => {
-      processSearchResults();
-      count++;
-      if (count >= 5) clearInterval(interval);
-    }, 1000);
+      processAllBadges();
+      processHomepageSearch();
+      checkCount++;
+      if (checkCount >= 10) {
+        clearInterval(interval);
+      }
+    }, 500);
+    
+    // Run on page change
+    api.onPageChange(() => {
+      setTimeout(() => {
+        processAllBadges();
+        processHomepageSearch();
+      }, 100);
+    });
+    
+    // Run on load
+    setTimeout(() => {
+      processAllBadges();
+      processHomepageSearch();
+    }, 100);
   },
   
 
