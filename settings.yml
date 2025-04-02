@@ -2,9 +2,17 @@ category_icon_list:
   default: "help,circle-question,#CC0000,partial|"
   type: "list"
   list_type: "simple"
+  description: "List of category icon mappings. Format: category_slug,icon_name,color,match_type (partial or exact)"
+
+category_title_appendages:
+  type: list
+  default: ""
+  description: "List of category ID and text to append pairs. Format: category_id,text_to_append (e.g., 19,Formerly Enterprise Auditor)"
+
 svg_icons:
   default: "circle-question"
   type: "list"
   list_type: "compact"
+
 category_lock_icon:
   default: ""
