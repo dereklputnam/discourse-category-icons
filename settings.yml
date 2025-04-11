@@ -14,5 +14,6 @@ svg_icons:
   type: "list"
   list_type: "compact"
 
+
 category_lock_icon:
   default: ""
