@@ -43,17 +43,26 @@ export default {
       let categoryThemeList = settings.category_icon_list.split("|");
       let lockIcon = settings.category_lock_icon || "lock";
 
-      categoryTitleLink.reopen({
+      api.modifyClass("component:category-title-link", {
+        pluginId: "category-icons-with-parent",
+      
         lockIcon,
       });
+      
 
-      categoriesBoxes.reopen({
+      api.modifyClass("component:categories-boxes", {
+        pluginId: "category-icons-with-parent",
+      
         lockIcon,
       });
+      
 
-      categoriesBoxesWithTopics.reopen({
+      api.modifyClass("component:categories-boxes-with-topics", {
+        pluginId: "category-icons-with-parent",
+      
         lockIcon,
       });
+      
       
       function getIconItem(categorySlug) {
         if (!categorySlug) {
